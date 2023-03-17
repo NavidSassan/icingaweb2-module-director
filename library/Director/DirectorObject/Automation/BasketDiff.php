@@ -69,10 +69,10 @@ class BasketDiff
     {
         if ($uuid && $current = BasketSnapshot::instanceByUuid($type, $uuid, $this->db)) {
             $exported = $this->exporter->export($current);
-            $this->getFieldResolver()->tweakTargetIds($exported);
+            // $this->getFieldResolver()->tweakTargetIds($exported);
         } elseif ($current = BasketSnapshot::instanceByIdentifier($type, $key, $this->db)) {
             $exported = $this->exporter->export($current);
-            $this->getFieldResolver()->tweakTargetIds($exported);
+            // $this->getFieldResolver()->tweakTargetIds($exported);
         } else {
             $exported = null;
         }
