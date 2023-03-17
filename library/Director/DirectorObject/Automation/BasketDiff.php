@@ -2,6 +2,7 @@
 
 namespace Icinga\Module\Director\DirectorObject\Automation;
 
+use Icinga\Module\Director\Objects\DirectorDatafield;
 use gipfl\Json\JsonString;
 use Icinga\Module\Director\Data\Exporter;
 use Icinga\Module\Director\Data\ObjectImporter;
@@ -40,12 +41,19 @@ class BasketDiff
     public function getCurrentString(string $type, string $key, ?UuidInterface $uuid = null): string
     {
         $current = $this->getCurrent($type, $key, $uuid);
+        // if (isset($current->fields)) {
+        //     unset($current->fields);
+        // }
         return $current ? JsonString::encode($current, JSON_PRETTY_PRINT) : '';
     }
 
     public function getBasketString(string $type, string $key): string
     {
-        return JsonString::encode($this->getBasket($type, $key), JSON_PRETTY_PRINT);
+        $object = $this->getBasket($type, $key);
+        // if (isset($object->fields)) {
+        //     unset($object->fields);
+        // }
+        return JsonString::encode($object, JSON_PRETTY_PRINT);
     }
 
     protected function getFieldResolver(): BasketSnapshotFieldResolver
@@ -57,7 +65,7 @@ class BasketDiff
         return $this->fieldResolver;
     }
 
-    protected function getCurrent(string $type, string $key, ?UuidInterface $uuid = null): ?object
+    public function getCurrent(string $type, string $key, ?UuidInterface $uuid = null): ?object
     {
         if ($uuid && $current = BasketSnapshot::instanceByUuid($type, $uuid, $this->db)) {
             $exported = $this->exporter->export($current);
@@ -76,17 +84,23 @@ class BasketDiff
     protected function getBasket($type, $key): stdClass
     {
         $object = $this->getBasketObject($type, $key);
-        $fields = $object->fields ?? null;
-        $reExport = $this->exporter->export(
-            $this->importer->import(BasketSnapshot::getClassForType($type), $object)
-        );
-        if ($fields === null) {
-            unset($reExport->fields);
+        if ($type === 'Datafield') {
+            $import = DirectorDatafield::import($object, $this->db);
+            $reExport = $import->export();
         } else {
-            $reExport->fields = $fields;
+            $fields = $object->fields ?? null;
+            $import = $this->importer->import(BasketSnapshot::getClassForType($type), $object);
+            $reExport = $this->exporter->export(
+                $import
+            );
+            if ($fields === null) {
+                unset($reExport->fields);
+            } else {
+                $reExport->fields = $fields;
+            }
         }
-        CompareBasketObject::normalize($reExport);
 
+        CompareBasketObject::normalize($reExport);
         return $reExport;
     }
 

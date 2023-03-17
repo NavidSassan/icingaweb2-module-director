@@ -22,6 +22,7 @@ use Icinga\Module\Director\Web\Controller\ActionController;
 use ipl\Html\Html;
 use Icinga\Module\Director\Web\Table\BasketSnapshotTable;
 use Ramsey\Uuid\Uuid;
+use Icinga\Module\Director\Objects\DirectorDatafield;
 
 class BasketController extends ActionController
 {
@@ -394,6 +395,8 @@ class BasketController extends ActionController
         }
         $basketJson = $diff->getBasketString($type, $key);
         $currentJson = $diff->getCurrentString($type, $key, $uuid);
+        $currentObject = $diff->getCurrent($type, $key, $uuid);
+
         if ($currentJson === $basketJson) {
             $this->content()->add([
                 Hint::ok('Basket equals current object'),
@@ -401,6 +404,45 @@ class BasketController extends ActionController
             ]);
         } else {
             $this->content()->add(new InlineDiff(new PhpDiff($currentJson, $basketJson)));
+        }
+        // use an array to allow sorting before displaying
+        $fieldDiffs = [];
+        $seenCurrentFieldUuids = [];
+        if (isset($object->fields)) {
+            foreach ($object->fields as $fieldReference) {
+                $basketField = $diff->getBasketObject('Datafield', $fieldReference->datafield_id);
+                $basketFieldString = $diff->getBasketString('Datafield', $fieldReference->datafield_id);
+                if ($fieldUuid = $basketField->uuid ?? null) {
+                    $fieldUuid = Uuid::fromString($fieldUuid);
+                }
+                // use an empty string as the $key, as we cannot rely on the id nor the varname.
+                // if the uuid does not match anything, we assume its a new object.
+                // TODO: this logic does not 100% mirror DirectorDatafield::import()
+                $currentField = $diff->getCurrent('Datafield', '', $fieldUuid);
+                $currentFieldString = $diff->getCurrentString('Datafield', '', $fieldUuid);
+                if ($currentField !== null) {
+                    $seenCurrentFieldUuids[$currentField->uuid] = true;
+                }
+                $fieldDiffs[$basketField->varname] = new InlineDiff(new PhpDiff($currentFieldString, $basketFieldString));
+            }
+        }
+        if (isset($currentObject->fields)) {
+            foreach ($currentObject->fields as $fieldReference) {
+                $currentField = $diff->getCurrent('Datafield', $fieldReference->datafield_id, null);
+                if (!isset($seenCurrentFieldUuids[$currentField->uuid])) {
+                    // this means the field is removed from this object, as it exists in the database but not in the basket
+                    $currentFieldString = $diff->getCurrentString('Datafield', $fieldReference->datafield_id, $fieldUuid);
+                    $fieldDiffs[$currentField->varname] = new InlineDiff(new PhpDiff($currentFieldString, ''));
+                }
+            }
+        }
+        if (!empty($fieldDiffs)) {
+            $this->content()->add(Html::tag('h2', 'Fields'));
+            ksort($fieldDiffs);
+            foreach ($fieldDiffs as $heading => $diff) {
+                $this->content()->add(Html::tag('h3', $heading));
+                $this->content()->add($diff);
+            }
         }
     }
 
